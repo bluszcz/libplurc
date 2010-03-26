@@ -1,0 +1,6 @@
+*.o
+*.dylib
+*.so
+*.pyc
+plurc
+config.h
