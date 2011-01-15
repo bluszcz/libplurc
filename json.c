@@ -378,6 +378,12 @@ static int json_array(JSON_ARRAY *array, JPS *jps)
 	if (expect(Tkn_LSquareBrackets, jps))
 		return -1;
 
+	/* Handle empty array */
+	token = peek_token(jps);
+	if (token == Tkn_RSquareBrackets)
+		return expect(Tkn_RSquareBrackets, jps);
+
+	/* Process each element */
 	while (1) {
 		val = json_array_next_val(array);
 		if (!val)
@@ -391,9 +397,12 @@ static int json_array(JSON_ARRAY *array, JPS *jps)
 		array->type = vtype;
 
 		token = peek_token(jps);
-		if (token != Tkn_Comma)
+		if (token == Tkn_Comma)
+			expect(Tkn_Comma, jps);
+		else if (token == Tkn_Error)
+			return -1;
+		else
 			break;
-		expect(Tkn_Comma, jps);
 	};
 
 	if (expect(Tkn_RSquareBrackets, jps))
@@ -504,11 +513,25 @@ static JSON_OBJ *json_kv_list(JSON_OBJ *jo, JPS *jps)
 
 static JSON_OBJ *json_obj(JSON_OBJ *jo, JPS *jps)
 {
+	int token;
+
 	if (expect(Tkn_LCurlyBrackets, jps))
 		return NULL;
+
+	/* Handle empty object */
+	token = peek_token(jps);
+	if (token == Tkn_RCurlyBrackets) {
+		if(expect(Tkn_RCurlyBrackets, jps))
+			return NULL;
+		else
+			return jo;
+	}
+
+	/* Process object KV elements */
 	jo = json_kv_list(jo, jps);
 	if (!jo)
 		return NULL;
+
 	if (expect(Tkn_RCurlyBrackets, jps))
 		return NULL;
 	return jo;
