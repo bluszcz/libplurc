@@ -1,24 +1,41 @@
-/* libplurc.h */
+/* OpenSSL headers */
+
+#include "openssl/bio.h"
+#include "openssl/ssl.h"
+#include "openssl/err.h"
+
+/* Size definitions */
+#define BUFRECVSIZE 1024
+#define RESPONSE_SIZE 40960
+#define REQUEST_SIZE 1024
+#define SESSION_SIZE 512
+#define MAX_MESSAGE_LENGTH 140
+#define API_KEY_LENGTH 64
 
 /* structures */
-struct plurk_key_value;
-struct plurk_response;
+typedef struct plurk_struct {
+	char recvbuf[BUFRECVSIZE];
+	char reply[RESPONSE_SIZE];
+	char *header, *body;
+	char url[REQUEST_SIZE];
+	char session[SESSION_SIZE];
+	char encmsg[MAX_MESSAGE_LENGTH * 3];
+	char apikey[API_KEY_LENGTH];
+	unsigned int sestate;		/* if session has been initialized */
 
-/* internal API */
-char *urlencode(char *content);
-char *getheader(const char *headers, char *header);
-struct plurk_response fetchpage(char *url, const int secure);
-void plurc_close(void);
-char *get_kv(int counter, char *url_part, struct plurk_key_value plurk_object);
-char *plurk_request(struct plurk_key_value *data_to_pass, int data_size, char* base_url);
-int set_session(char *tsession);
+	unsigned int sstate;   		/* if SSL has been initialized */
+	SSL_CTX *ctx;
+	BIO *bio;
+} PLURK;
 
-/* Plurk.com API */
-char *plurk_login(char *username, char *password, char *key);
-char *plurk_add(char *content, char *key);
-char *plurk_logout(char *key);
-char *plurk_resps_get(char *plurk_id, char *from_responses, char *key);
-char *plurk_oprofile_get(char *key);
-char *plurk_pprofile_get(char *user_id, char *key);
-char *plurk_resps_radd(char *plurk_id, char *content, char *key);
+/* Public Plurk APIs */
+PLURK *plurk_open(const char *key);
+void plurk_close(PLURK *ph);
+int plurk_login(PLURK *ph, const char *username, const char *password);
+int plurk_logout(PLURK *ph);
+int plurk_add(PLURK *ph, const char *content, const char *qualifier);
+int plurk_resps_get(PLURK *ph, const char *plurk_id, const char *from_responses);
+int plurk_oprofile_get(PLURK *ph);
+int plurk_pprofile_get(PLURK *ph, const char *user_id);
+int plurk_resps_radd(PLURK *ph, const char *plurk_id, const char *content, const char *qualifier);
 

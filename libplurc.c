@@ -1,406 +1,335 @@
-/*
-	plurc or gtfo
-*/
-
 #include <ctype.h>
 
-/* OpenSSL headers */
-
-#include "openssl/bio.h"
-#include "openssl/ssl.h"
-#include "openssl/err.h"
-
-/* OpenSSL cert */
-
-#define SSL_CERT_FILE SSL_CERT_PATH"/Equifax_Secure_Plurc_CA.crt"
-
 /* libplurc api commands */
-
+#include "libplurc.h"
 #include "api.h"
 
-/* globals */
+/* OpenSSL cert */
+#define SSL_CERT_FILE SSL_CERT_PATH"/Equifax_Secure_Plurc_CA.crt"
 
-static char reply[RESPONSE_SIZE];
-static char session[SESSION_SIZE];
-static unsigned int sestate=0;						/* if session has been initialized */
-
-static unsigned int sstate=0;   				/* if SSL has been initialized */
-static SSL_CTX * ctx = NULL;
-static BIO * bio = NULL;
-
-/* this one is used to build GET part with parameters */
-struct plurk_key_value
+static char radix16[16] =
 {
-	char key[129];
-	char value[513];
+	'0', '1', '2', '3', '4', '5', '6', '7',
+	'8', '9', 'A', 'B', 'C', 'D', 'E', 'F',
 };
 
-/* this one represents HTTP Response - splitted for headers and body */
-struct plurk_response
+static int urlencode(char *encoded, const char *content)
 {
-	char *headers;
-	char *body;
-};
-
-char *urlencode(char *content)
-{
-	/* simple urlencode implementation TODO: make it better */
-	char *ptr = content;
-	char *encoded = malloc(421);
+	const char *ptr = content;
 	char *penc = encoded;
+	int cc;
 
-	while (*ptr)
-	{
-		if (*ptr==' ')
-			*penc++ = '+';
-		else if  (*ptr=='/')
-		{
-			memcpy(penc, "%2f", strlen("%2f"));
-			penc+=3;
+	for( ; *ptr ; ++ptr) {
+		if(isalnum(*ptr) ||
+			*ptr == '.' || *ptr == '_')
+			*penc++ = *ptr;
+		else {
+			cc = *ptr;
+			*penc++ = '%';
+			*penc++ = radix16[(cc >> 4) & 0xF];
+			*penc++ = radix16[(cc & 0xF)];
 		}
-		else if (*ptr=='#')
-		{
-			memcpy(penc, "%2f", strlen("%23"));
-			penc+=3;
-		}
-		else
-			*penc++ = *ptr;		
-		ptr++;
-	};
+	}
 	*penc = '\0';
-	
-	return encoded;
-};
 
-char *getheader(const char *headers, char *header)
+	return penc - encoded;
+}
+
+static int getheader(const char *headers, const char *header, char *buffer)
 {
-	char *value = NULL;
-	value = malloc(SESSION_SIZE);
-	memset(value, '\0', SESSION_SIZE);
+	const char *ptr = headers, *eptr;
+	int len;
 
-	unsigned int c;				/* counters */
-	unsigned int d;				/* counters */
-	unsigned int isizes = strlen(headers);
-	unsigned int isize = strlen(header);
-	for (c=0;c<isizes;c++)
-	{
-		if (tolower(headers[c])==tolower(header[0]))
-		{	
-			c++;
-			for(d=1;(d<isize && c <= isizes);d++) /* checks if c is not bigger  */
-																						/* than whole headers strem   */
-			{
-				if (tolower(headers[c])!=tolower(header[d]))
-				{
-					break;
-				};
-				c++;			
-			};
-			if (d==isize) 
-			{	
-				c += 2; 		/* skip ': ' */
-				d = 0; 			/* reset counter */
-			  while((c<isizes) && (headers[c] != 10))
-				{
-					memset(&value[d], headers[c], sizeof(headers[c]));
-					c++;
-					d++;
-				};
-				return value;
-			};
-		};
-	};
-	return value;
-};
+	*buffer = '\0';
+	while ((ptr = strstr(ptr, "\r\n")) != NULL) {
+		ptr += 2;
+		if (!strncasecmp(ptr, header, strlen(header))) {
+			ptr += strlen(header);
+			if (strncmp(ptr, ": ", 2))
+				continue;
+			ptr += 2;
+			eptr = strstr(ptr, "\r\n");
+			if (eptr)
+				len = eptr - ptr;
+			else
+				len = strlen(ptr);
+			memcpy(buffer, ptr, len);
+			buffer[len] = '\0';
+			return 0;
+		}
+	}
+	return -1;
+}
 
-
-struct plurk_response fetchpage(char *url, const unsigned int secure)
+static void fetchpage(PLURK *ph, const char *url, int secure)
 {
 	/*
 		url - taken from function plurk_request
 		secure - (0, plain),(1,over ssl)
 	*/
-	ssize_t bytessent;
-	unsigned int rsize =0;
-	unsigned int check_header = 1;
-	struct plurk_response response;
-	char *eoh = NULL;											/* end of headers */
-	char buf[BUFRECVSIZE];
-  memset(&buf, '\0', BUFRECVSIZE);
+	ssize_t total;
+	int rc;
+	unsigned long offset;
+	char *eoh;		/* end of headers */
 
+	ph->recvbuf[0] = '\0';
 	if (secure)
 	{
 		SSL_library_init();
 		SSL_load_error_strings();
-		if (!sstate)
+		if (!ph->sstate)
 		{
-			ctx = SSL_CTX_new(SSLv23_client_method());
-			sstate = 1;
-		};
+			ph->ctx = SSL_CTX_new(SSLv23_client_method());
+			ph->sstate = 1;
+		}
 
-		if (ctx==NULL)
-		{
-			ERR_print_errors_fp(stderr);
-			exit(EXIT_FAILURE);
-		};
-
-		SSL * ssl=NULL;
-
-		if(! SSL_CTX_load_verify_locations(ctx, "/etc/ssl/certs/Certum_Root_CA.pem", NULL))
+		if (!ph->ctx)
 		{
 			ERR_print_errors_fp(stderr);
 			exit(EXIT_FAILURE);
 		}
 
-		bio = BIO_new_ssl_connect(ctx);
-		BIO_get_ssl(bio, & ssl);
-		SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
+		SSL * ssl = NULL;
 
-		BIO_set_conn_hostname(bio, "www.plurk.com:443");
-	} 
-	else
-	{
-		bio = BIO_new_connect("www.plurk.com:80");
-	};
-
-
-	if(bio == NULL)
-	{
-			/* Handle the failure */
+		if (!SSL_CTX_load_verify_locations(ph->ctx, "/etc/ssl/certs/Certum_Root_CA.pem", NULL))
+		{
 			ERR_print_errors_fp(stderr);
 			exit(EXIT_FAILURE);
+		}
+
+		ph->bio = BIO_new_ssl_connect(ph->ctx);
+		BIO_get_ssl(ph->bio, &ssl);
+		SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
+
+		BIO_set_conn_hostname(ph->bio, PLURK_HOST ":" SSL_PORT);
+	} else {
+		ph->bio = BIO_new_connect(PLURK_HOST ":" HTTP_PORT);
 	}
 
-	if(BIO_do_connect(bio) <= 0)
-	{
+	if(ph->bio == NULL) {
+		/* Handle the failure */
+		ERR_print_errors_fp(stderr);
+		exit(EXIT_FAILURE);
+	}
+
+	if(BIO_do_connect(ph->bio) <= 0) {
 		/* Handle failed connection */
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
 	}
 
-	bytessent = BIO_write(bio, url, strlen(url));
 
-	while((rsize = BIO_read(bio, buf, BUFRECVSIZE-1)) && (rsize!=0))
-	{
-		strncat(reply, buf, rsize);
-	};
+	total = strlen(url);
+	offset = 0;
+	while (total > 0) {
+		rc = BIO_write(ph->bio, url + offset, total);
+		if (rc > 0) {
+			total -= rc;
+			offset += rc;
+		} else {
+			fprintf(stderr, "BIO_write error\n");
+			exit(EXIT_FAILURE);
+		}
+	}
 
-	eoh = strstr(reply, "\r\n\r\n");
-	
-	if ( eoh !=NULL)
-	{
-		check_header = 0;
+	offset = 0;
+	while((rc = BIO_read(ph->bio, ph->recvbuf, BUFRECVSIZE-1)) && (rc > 0)) {
+		memcpy(ph->reply + offset, ph->recvbuf, rc);
+		offset += rc;
+	}
+	ph->reply[offset] = '\0';
+
+	eoh = strstr(ph->reply, "\r\n\r\n");
+	if ( eoh != NULL ) {
 		*eoh = '\0';
-		response.headers = reply;
-		response.body = eoh + 4;
-	} 
-	else
-	{
-		response.headers = "";
-		response.body = "";
-	};
+		ph->header = ph->reply;
+		ph->body = eoh + 4;
+	} else {
+		ph->header = NULL;
+		ph->body = NULL;
+	}
 
-	BIO_free_all(bio);
-	return response;
-}	
-
-/* this functions must be called before exit */
-void plurc_close()
-{
-	if (sstate)
-	{
-		SSL_CTX_free(ctx);
-		sstate = 0;
-	};
+	BIO_free_all(ph->bio);
 }
 
-
-char *get_kv(int counter, char *url_part, struct plurk_key_value plurk_object)
+static char *plurk_encode_kv(char *buf, const char *key, const char *value)
 {
-	/*
-		This function helps building proper url for request
-	*/
-	if (counter==0) 
-	{
-		strncpy(&url_part[strlen(url_part)], "?", sizeof("?"));
-	} 
-	else
-	{
-		strncpy(&url_part[strlen(url_part)], "&", sizeof("&"));
-	};	
-	strncpy(&url_part[strlen(url_part)], plurk_object.key, sizeof(plurk_object.key));
-	strncpy(&url_part[strlen(url_part)], "=", sizeof("="));
-	strncpy(&url_part[strlen(url_part)], plurk_object.value, sizeof(plurk_object.value));
-	return url_part;
-};
+	int rc;
 
-int set_session(char *tsession)
+	rc = urlencode(buf, key);
+	buf += rc;
+	memcpy(buf, "=", 2);
+	++buf;
+	rc = urlencode(buf, value);
+	buf += rc;
+
+	return buf;
+}
+
+static int plurk_request(PLURK *ph, const char *base_url, int is_ssl,
+			 int argn, ...)
 {
-	if (!sestate)
-	{
-		strncpy(session, tsession, strlen(tsession));
-		sestate = 1;
-		return 1;
+	char *ptr = ph->url, *key, *value;
+	va_list ap;
+	int i;
+
+	/* Build first line of request */
+	sprintf(ptr, "GET %s", base_url);
+	ptr += strlen(ptr);
+	va_start(ap, argn);
+	for (i = 0; i < argn; ++i) {
+		if (i == 0)
+			memcpy(ptr, "?", 2);
+		else
+			memcpy(ptr, "&", 2);
+		++ptr;
+		key = va_arg(ap, char *);
+		value = va_arg(ap, char *);
+		ptr = plurk_encode_kv(ptr, key, value);
 	}
+	va_end(ap);
+	sprintf(ptr, " HTTP/1.0\r\n");
+	ptr += strlen(ptr);
+
+	/* Add HTTP host header */
+	sprintf(ptr, "Host: %s\r\n", PLURK_HOST);
+	ptr += strlen(ptr);
+
+	/* Add Cookie header if exist */
+	if (ph->sestate) {
+		sprintf(ptr, "Cookie: %s\r\n", ph->session);
+		ptr += strlen(ptr);
+	}
+
+	/* Finalize header */
+	sprintf(ptr, "\r\n");
+
+	fetchpage(ph, ph->url, is_ssl);
 	return 0;
 }
 
-char *plurk_request(struct plurk_key_value *data_to_pass, unsigned int data_size, char* base_url)
-{	
-	/*
-		This function generates whole request which is send to server
-		url_part is used as request in function fetchpage
-	*/
-	
-	unsigned int counter;
-	struct plurk_key_value plurk_object;
-	static char url_part[REQUEST_SIZE];
-	static char url[REQUEST_SIZE]; /* needed bigger size */
-	memcpy(url_part, "\0", sizeof("\0"));
+/*
+ * Public APIs
+ */
+/* Allocate buffers for an API session */
+PLURK *plurk_open(const char *apikey)
+{
+	PLURK *ph;
 
-	/* iteration over plurk objects */
-	for (counter=0;counter<data_size;counter++) 
+	ph = malloc(sizeof(PLURK));
+	if (ph) {
+		memset(ph, 0, sizeof(PLURK));
+		strcpy(ph->apikey, apikey);
+	}
+
+	return ph;
+}
+
+/* this functions must be called in pair of each plurk_open */
+void plurk_close(PLURK *ph)
+{
+	if (!ph)
+		return;
+
+	if (ph->sstate)
 	{
-		plurk_object = data_to_pass[counter];
-		get_kv(counter, url_part, plurk_object);
+		SSL_CTX_free(ph->ctx);
+		ph->sstate = 0;
 	};
-
-  snprintf(url, REQUEST_SIZE, base_url, url_part, PLURK_HOST, session);
-	return url;	
-};
-
-char *plurk_login(char *username, char *password, char *key)
-{
-	/* returns session */
-	struct plurk_key_value plurk_datas[3];
-	struct plurk_response response;
-	char *url_part;
-
-	strncpy(plurk_datas[0].key, "api_key", sizeof("api_key"));
-	strncpy(plurk_datas[0].value, key, strlen(key)+1);
-	strncpy(plurk_datas[1].key, "username", sizeof("username"));
-	strncpy(plurk_datas[1].value,username, strlen(username)+1);
-	strncpy(plurk_datas[2].key,"password", sizeof("password"));
-	strncpy(plurk_datas[2].value,password,strlen(password)+1);
-
-	url_part = plurk_request(plurk_datas, 3, HTTP_REQUEST_LOGIN);
-	response = fetchpage(url_part, 1);
-
-	return(getheader(response.headers, "set-cookie"));
-	
-};
-
-char *plurk_logout(char *key)
-{
-	
-	struct plurk_key_value plurk_datas[1];
-	struct plurk_response response;
-	char *url_part;	
-
-	strncpy(plurk_datas[0].key, "api_key", sizeof("api_key"));
-	strncpy(plurk_datas[0].value, key, strlen(key)+1);
-
-	url_part = plurk_request(plurk_datas, 1, HTTP_REQUEST_LOGOUT);
-	response = fetchpage(url_part, 0);
-
-	return response.body;
-};
-
-
-char *plurk_add(char *content, char *key)
-{
-	
-	struct plurk_key_value plurk_datas[3];
-	struct plurk_response response;
-	char *url_part;	
-	char *econtent	= urlencode(content);
-
-	strncpy(plurk_datas[0].key, "api_key", sizeof("api_key"));
-	strncpy(plurk_datas[0].value, key, strlen(key)+1);
-	strncpy(plurk_datas[1].key, "content", sizeof("content"));
-	strncpy(plurk_datas[1].value, econtent, strlen(econtent)+1);
-	strncpy(plurk_datas[2].key, "qualifier", sizeof("qualifier"));
-	strncpy(plurk_datas[2].value, ":", sizeof(":"));
-
-	url_part = plurk_request(plurk_datas, 3, HTTP_REQUEST_ADD);
-	response = fetchpage(url_part, 0);
-	free(econtent);
-
-	return response.body;
-};
-
-char *plurk_resps_get(char *plurk_id, char *from_response, char *key)
-{
-	
-	struct plurk_key_value plurk_datas[1];
-	struct plurk_response response;
-	char *url_part;	
-
-	strncpy(plurk_datas[0].key, "api_key", sizeof("api_key"));
-	strncpy(plurk_datas[0].value, key, strlen(key)+1);
-	strncpy(plurk_datas[1].key, "plurk_id", sizeof("plurk_id"));
-	strncpy(plurk_datas[1].value, plurk_id, strlen(plurk_id)+1);
-	strncpy(plurk_datas[2].key, "from_response", sizeof("from_response"));
-	strncpy(plurk_datas[2].value, from_response, strlen(from_response)+1);
-
-	url_part = plurk_request(plurk_datas, 3, HTTP_REQUEST_RESPS_GET);
-	response = fetchpage(url_part, 0);
-
-	return response.body;
+	free(ph);
 }
 
-char *plurk_oprofile_get(char *key)
+int plurk_login(PLURK *ph, const char *username, const char *password)
 {
-	struct plurk_key_value plurk_datas[1];
-	struct plurk_response response;
-	char *url_part;	
+	int rc;
 
-	strncpy(plurk_datas[0].key, "api_key", sizeof("api_key"));
-	strncpy(plurk_datas[0].value, key, strlen(key)+1);
+	rc = plurk_request(ph, "/API/Users/login", IS_SSL, 3,
+			"api_key", ph->apikey,
+			"username", username,
+			"password", password);
+	if (rc)
+		return rc;
 
-	url_part = plurk_request(plurk_datas, 1, HTTP_REQUEST_OPROFILE_GET);
-	response = fetchpage(url_part, 0);
-	return response.body;
+	rc = getheader(ph->header, "set-cookie", ph->session);
+	if (!rc)
+		ph->sestate = 1;
+	return rc;
 }
 
-char *plurk_pprofile_get(char *user_id, char *key)
+int plurk_logout(PLURK *ph)
 {
-	struct plurk_key_value plurk_datas[2];
-	struct plurk_response response;
-	char *url_part;	
+	int rc;
 
-	strncpy(plurk_datas[0].key, "api_key", sizeof("api_key"));
-	strncpy(plurk_datas[0].value, key, strlen(key)+1);
-	strncpy(plurk_datas[1].key, "user_id", sizeof("user_id"));
-	strncpy(plurk_datas[1].value, user_id, strlen(user_id)+1);
+	if (!ph->sestate)
+		return -1;
 
-	url_part = plurk_request(plurk_datas, 2, HTTP_REQUEST_PPROFILE_GET);
-	response = fetchpage(url_part, 0);
-	return response.body;
-
+	rc = plurk_request(ph, "/API/Users/logout", NOT_SSL, 1,
+				"api_key", ph->apikey);
+	if (!rc)
+		ph->sestate = 0;
+	return rc;
 }
 
-char *plurk_resps_radd(char *plurk_id, char *content, char *key)
+int plurk_add(PLURK *ph, const char *content, const char *qualifier)
 {
-	
-	struct plurk_key_value plurk_datas[4];
-	struct plurk_response response;
-	char *url_part;	
-	char *econtent	= urlencode(content);
+	int rc;
 
-	strncpy(plurk_datas[0].key, "api_key", sizeof("api_key"));
-	strncpy(plurk_datas[0].value, key, strlen(key)+1);
-	strncpy(plurk_datas[1].key, "content", sizeof("content"));
-	strncpy(plurk_datas[1].value, econtent, strlen(econtent)+1);
-	strncpy(plurk_datas[2].key, "qualifier", sizeof("qualifier"));
-	strncpy(plurk_datas[2].value, ":", sizeof(":"));
-	strncpy(plurk_datas[3].key, "plurk_id", sizeof("plurk_id"));
-	strncpy(plurk_datas[3].value, plurk_id, strlen(plurk_id)+1);
+	if (!ph->sestate)
+		return -1;
 
-	url_part = plurk_request(plurk_datas, 4, HTTP_REQUEST_RESPS_RADD);
-	response = fetchpage(url_part, 0);
-	free(econtent);
+	rc = plurk_request(ph, "/API/Timeline/plurkAdd", NOT_SSL, 3,
+			"api_key", ph->apikey,
+			"content", content,
+			"qualifier", qualifier);
+	return rc;
+}
 
-	return response.body;
-};
+int plurk_oprofile_get(PLURK *ph)
+{
+	int rc;
+
+	if (!ph->sestate)
+		return -1;
+
+	rc = plurk_request(ph, "/API/Profile/getOwnProfile", NOT_SSL, 1,
+			"api_key", ph->apikey);
+	return rc;
+}
+
+int plurk_pprofile_get(PLURK *ph, const char *user_id)
+{
+	int rc;
+
+	rc = plurk_request(ph, "/API/Profile/getPublicProfile", NOT_SSL, 2,
+			"api_key", ph->apikey,
+			"user_id", user_id);
+	return rc;
+}
+
+int plurk_resps_get(PLURK *ph, const char *plurk_id, const char *from_response)
+{
+	int rc;
+
+	rc = plurk_request(ph, "/API/Responses/get", NOT_SSL, 3,
+			"api_key", ph->apikey,
+			"plurk_id", plurk_id,
+			"from_response", from_response);
+	return rc;
+}
+
+int plurk_resps_radd(PLURK *ph, const char *plurk_id,
+			const char *content, const char *qualifier)
+{
+	int rc;
+
+	if (!ph->sestate)
+		return -1;
+
+	rc = plurk_request(ph, "/API/Responses/responseAdd", NOT_SSL, 4,
+			"api_key", ph->apikey,
+			"plurk_id", plurk_id,
+			"content", content,
+			"qualifier", qualifier);
+	return rc;
+}
 
