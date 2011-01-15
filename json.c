@@ -622,29 +622,27 @@ void print_json_array(JSON_ARRAY *ja, int indent)
 	for (i = 0; i < ja->size; ++i) {
 		switch (ja->type) {
 		case Val_Null:
-			printf("Null\n");
+			iprintf(indent, "Null\n");
 			break;
 		case Val_Floating:
-			printf("%lf\n", ja->values[i].floating);
+			iprintf(indent, "%lf\n", ja->values[i].floating);
 			break;
 		case Val_Integer:
-			printf("%lld\n", ja->values[i].integer);
+			iprintf(indent, "%lld\n", ja->values[i].integer);
 			break;
 		case Val_String:
-			printf("\"%s\"\n", ja->values[i].string);
+			iprintf(indent, "\"%s\"\n", ja->values[i].string);
 			break;
 		case Val_Boolean:
 			if (ja->values[i].boolean)
-				printf("True\n");
+				iprintf(indent, "True\n");
 			else
-				printf("False\n");
+				iprintf(indent, "False\n");
 			break;
 		case Val_Array:
-			printf("\n");
 			print_json_array(ja->values[i].array, indent);
 			break;
 		case Val_Object:
-			printf("\n");
 			print_json_obj(ja->values[i].object, indent);
 			break;
 		}
