@@ -2,11 +2,12 @@
   / (_) /  ___  / /_ __________
  / / / _ \/ _ \/ / // / __/ __/
 /_/_/_.__/ .__/_/\_,_/_/  \__/ 
-        /_/    by bluszcz@bluszcz.net
+        /_/    by bluszcz@bluszcz.net,
+		  cooldavid@cooldavid.org
 
 (1) What is libplurc?
 
- libplurc is a minimalistic library written in C, which provides API to 
+ libplurc is a minimalistic library written in C, which provides API to
  Plurk.com - popular microblogging service.
 
 (2) Can I use it in my projects? What is its licence?
@@ -15,31 +16,31 @@
  the details in LICENSE file.
 
 (3) What is plurc?
- 
+
  plurc is an example C application, which uses libplurc.
 
 (4) Which operating systems does it support? How stable it is?
- 
+
  Every stable release: OpenBSD, NetBSD, FreeBSD, OpenSolaris, Solaris, Linux,
  and others. Development versions (from repository) are tested mainly on Linux
- Additionaly every stable release will be tested with Valgrind for possibility 
+ Additionaly every stable release will be tested with Valgrind for possibility
  of memory leaks.
 
 (5) Where is the documentation?
- 
+
  For now you have to take a look at plurc sources (point (3)).
 
 (6) Requirements?
- 
+
  Standard C library + OpenSSL - no other dependiences. No automake, autotools,
  autoconf and other bloated things. Even no libcurl (rock).
 
 (7) I would like to send patch / to be part of big libplurc community (lolz)
- 
+
  So, just do it.
 
 (8) What is config.h, config.h.template and do I need it?
- 
+
  To simplify several things plurc is compiling with your login, password and 
  api key. So, just copy config.h.template into config.h and fill it with 
  correct data. Or you can modify plurc.c and add some input/output operations
@@ -47,32 +48,32 @@
  aproach - don't use it, simply as that.
 
 (9) I am new to Plurk, how can I join?
- 
+
  Just go here: http://www.plurk.com/bluszcz/invite (yes, I'm karma slut ;).
 
 (a) How to install?
- 
+
  make
  make install
 
 (b) How can I change place where libplurc is installed?
- 
+
  Look at provided makefiles. If you have no idea what is this about, drop it 
  and try one of http://www.plurk.com/API#resources (high level library).
 
 (c) I found a bug, security issue or just have a comment.
- 
+
  Send me it, simply as that.
 
 (d) There is a lot of strncpy in every API method which looks like "Do repeat
  yourself" anti-pattern. Huh?
- 
+
  Yes, I know. API should be stable now - one day I will refactor it.
 
 (e) It doesn't compile on my Unix flavour.
- 
+
  Just fix it and send me the patch.
 
 (f) As above, but I don't have idea how to do this.
- 
+
  Give me shell account on this system and I will fix it.
