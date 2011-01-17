@@ -165,6 +165,7 @@ static int get_string(JPS *jps)
 #else
 					sp[0] = (hexvaltbl[(int)p[2]] << 4) | hexvaltbl[(int)p[3]];
 					sp[1] = (hexvaltbl[(int)p[0]] << 4) | hexvaltbl[(int)p[1]];
+					sp += 2;
 #endif
 					p += 4;
 				} else {
