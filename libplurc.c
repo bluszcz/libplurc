@@ -1,4 +1,6 @@
 #include <ctype.h>
+#include <string.h>
+#include <strings.h>
 
 /* libplurc api commands */
 #include "libplurc.h"

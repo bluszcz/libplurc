@@ -22,9 +22,12 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdarg.h>
-#include <iconv.h>
 
 #include "json.h"
+
+#ifdef CONVERT_TO_UTF8
+#include <iconv.h>
+#endif
 
 static char hexvaltbl[] = {
 	 0,  0,  0,  0,  0,  0,  0,  0,  0,  0, /*   0 to   9 */
@@ -50,10 +53,13 @@ static int ishexdigit(char ch)
 static int get_string(JPS *jps)
 {
 	int slen;
-	char *sp, u16buf[2], *inbuf;
+	char *sp;
 	const char *p = jps->left;
+#ifdef CONVERT_TO_UTF8
+	char u16buf[2], *inbuf;;
 	iconv_t u16to8;
 	size_t inlen, outlen;
+#endif
 
 	if (*p != '\"')
 		return Tkn_Error;
@@ -83,7 +89,11 @@ static int get_string(JPS *jps)
 				if (ishexdigit(p[0]) && ishexdigit(p[1]) &&
 				    ishexdigit(p[2]) && ishexdigit(p[3])) {
 					p += 4;
+#ifdef CONVERT_TO_UTF8
 					slen += 3;
+#else
+					slen += 2;
+#endif
 				} else {
 					return Tkn_Error;
 				}
@@ -143,6 +153,7 @@ static int get_string(JPS *jps)
 				++p;
 				if (ishexdigit(p[0]) && ishexdigit(p[1]) &&
 				    ishexdigit(p[2]) && ishexdigit(p[3])) {
+#ifdef CONVERT_TO_UTF8
 					u16buf[0] = (hexvaltbl[(int)p[2]] << 4) | hexvaltbl[(int)p[3]];
 					u16buf[1] = (hexvaltbl[(int)p[0]] << 4) | hexvaltbl[(int)p[1]];
 					inbuf = u16buf;
@@ -151,6 +162,10 @@ static int get_string(JPS *jps)
 					u16to8 = iconv_open("UTF-8", "UTF-16");
 					iconv(u16to8, &inbuf, &inlen, &sp, &outlen);
 					iconv_close(u16to8);
+#else
+					sp[0] = (hexvaltbl[(int)p[2]] << 4) | hexvaltbl[(int)p[3]];
+					sp[1] = (hexvaltbl[(int)p[0]] << 4) | hexvaltbl[(int)p[1]];
+#endif
 					p += 4;
 				} else {
 					return Tkn_Error;
