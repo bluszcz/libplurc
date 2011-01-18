@@ -31,10 +31,10 @@ int main(int argc, char **argv)
 				goto out;
 			}
 			if (!plurk_add(ph, argv[2], "says")) {
-				jo = create_json_obj(ph->body);
+				jo = json_create_obj(ph->body);
 				if (jo) {
-					print_json_obj(jo, 0);
-					free_json_obj(jo);
+					json_print_obj(jo, 0);
+					json_free_obj(jo);
 				}
 			} else {
 				fprintf(stderr, "Plurk add error\n");
@@ -42,10 +42,10 @@ int main(int argc, char **argv)
 				goto out;
 			}
 			if (!plurk_logout(ph)) {
-				jo = create_json_obj(ph->body);
+				jo = json_create_obj(ph->body);
 				if (jo) {
-					print_json_obj(jo, 0);
-					free_json_obj(jo);
+					json_print_obj(jo, 0);
+					json_free_obj(jo);
 				}
 			} else {
 				fprintf(stderr, "Plurk logout error\n");
@@ -58,10 +58,10 @@ int main(int argc, char **argv)
 			*/
 			printf("You wanna plurk responses %s\n", argv[2]);
 			if (!plurk_resps_get(ph, argv[2], "0")) {
-				jo = create_json_obj(ph->body);
+				jo = json_create_obj(ph->body);
 				if (jo) {
-					print_json_obj(jo, 0);
-					free_json_obj(jo);
+					json_print_obj(jo, 0);
+					json_free_obj(jo);
 				}
 			} else {
 				fprintf(stderr, "Plurk get response error\n");
@@ -74,10 +74,10 @@ int main(int argc, char **argv)
 			*/
 			printf("You wanna public profile get for %s\n", argv[2]);
 			if (!plurk_pprofile_get(ph, argv[2])) {
-				jo = create_json_obj(ph->body);
+				jo = json_create_obj(ph->body);
 				if (jo) {
-					print_json_obj(jo, 0);
-					free_json_obj(jo);
+					json_print_obj(jo, 0);
+					json_free_obj(jo);
 				}
 			} else {
 				fprintf(stderr, "Plurk get response error\n");
@@ -98,10 +98,10 @@ int main(int argc, char **argv)
 			}
 
 			if (!plurk_resps_radd(ph, argv[2], argv[3], "says")) {
-				jo = create_json_obj(ph->body);
+				jo = json_create_obj(ph->body);
 				if (jo) {
-					print_json_obj(jo, 0);
-					free_json_obj(jo);
+					json_print_obj(jo, 0);
+					json_free_obj(jo);
 				}
 			} else {
 				fprintf(stderr, "Plurk add error\n");
@@ -110,10 +110,10 @@ int main(int argc, char **argv)
 			}
 
 			if (!plurk_logout(ph)) {
-				jo = create_json_obj(ph->body);
+				jo = json_create_obj(ph->body);
 				if (jo) {
-					print_json_obj(jo, 0);
-					free_json_obj(jo);
+					json_print_obj(jo, 0);
+					json_free_obj(jo);
 				}
 			} else {
 				fprintf(stderr, "Plurk logout error\n");
@@ -135,10 +135,10 @@ int main(int argc, char **argv)
 			}
 
 			if (!plurk_oprofile_get(ph)) {
-				jo = create_json_obj(ph->body);
+				jo = json_create_obj(ph->body);
 				if (jo) {
-					print_json_obj(jo, 0);
-					free_json_obj(jo);
+					json_print_obj(jo, 0);
+					json_free_obj(jo);
 				}
 			} else {
 				fprintf(stderr, "Plurk add error\n");
@@ -147,10 +147,10 @@ int main(int argc, char **argv)
 			}
 
 			if (!plurk_logout(ph)) {
-				jo = create_json_obj(ph->body);
+				jo = json_create_obj(ph->body);
 				if (jo) {
-					print_json_obj(jo, 0);
-					free_json_obj(jo);
+					json_print_obj(jo, 0);
+					json_free_obj(jo);
 				}
 			} else {
 				fprintf(stderr, "Plurk logout error\n");

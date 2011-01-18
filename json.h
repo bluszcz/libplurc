@@ -47,7 +47,7 @@ typedef struct json_object {
 	JSON_KV *kv;
 } JSON_OBJ;
 
-JSON_OBJ *create_json_obj(const char *str);
-void free_json_obj(JSON_OBJ *jo);
-void print_json_array(JSON_ARRAY *jo, int indent);
-void print_json_obj(JSON_OBJ *jo, int indent);
+JSON_OBJ *json_create_obj(const char *str);
+void json_free_obj(JSON_OBJ *jo);
+void json_print_array(JSON_ARRAY *jo, int indent);
+void json_print_obj(JSON_OBJ *jo, int indent);

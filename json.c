@@ -526,7 +526,7 @@ static int json_array(JSON_ARRAY *array, JPS *jps)
 	return 0;
 }
 
-static JSON_OBJ *json_obj(JSON_OBJ *jo, JPS *jps);
+static int json_obj(JSON_OBJ *jo, JPS *jps);
 static int json_value(int *type, JSON_VAL *value, JPS *jps)
 {
 	int token;
@@ -552,10 +552,7 @@ static int json_value(int *type, JSON_VAL *value, JPS *jps)
 	case Tkn_LCurlyBrackets:
 		*type = Val_Object;
 		value->object = alloc_json_obj();
-		if (json_obj(value->object, jps))
-			return 0;
-		else
-			return -1;
+		return json_obj(value->object, jps);
 	case Tkn_LSquareBrackets:
 		*type = Val_Array;
 		value->array = alloc_json_array();
@@ -579,80 +576,76 @@ static int json_value(int *type, JSON_VAL *value, JPS *jps)
 	}
 }
 
-static JSON_OBJ *json_kv(JSON_OBJ *jo, JPS *jps)
+static int json_kv(JSON_OBJ *jo, JPS *jps)
 {
 	JSON_KV *jkv;
 
 	/* Get key */
 	if (expect(Tkn_String, jps))
-		return NULL;
+		return -1;
 	jkv = json_obj_next_kv(jo);
 	if (!jkv)
-		return NULL;
+		return -1;
 	jkv->key = jps->string;
 	jps->string = NULL;
 
 
 	/* Get Separator */
 	if (expect(Tkn_Colon, jps))
-		return NULL;
+		return -1;
 
 	/* Get Value */
 	if (json_value(&jkv->type, &jkv->value, jps))
-		return NULL;
+		return -1;
 
-	return jo;
+	return 0;
 }
 
-static JSON_OBJ *json_kv_list(JSON_OBJ *jo, JPS *jps)
+static int json_kv_list(JSON_OBJ *jo, JPS *jps)
 {
 	int token;
 
-	jo = json_kv(jo, jps);
-	if (!jo)
-		return NULL;
+	if (json_kv(jo, jps))
+		return -1;
 
 	token = peek_token(jps);
 	while (token == Tkn_Comma) {
 		expect(Tkn_Comma, jps);
-		jo = json_kv(jo, jps);
-		if (!jo)
-			return NULL;
+		if (json_kv(jo, jps))
+			return -1;
 		token = peek_token(jps);
 	}
 	if (token == Tkn_Error)
-		return NULL;
+		return -1;
 
-	return jo;
+	return 0;
 }
 
-static JSON_OBJ *json_obj(JSON_OBJ *jo, JPS *jps)
+static int json_obj(JSON_OBJ *jo, JPS *jps)
 {
 	int token;
 
 	if (expect(Tkn_LCurlyBrackets, jps))
-		return NULL;
+		return -1;
 
 	/* Handle empty object */
 	token = peek_token(jps);
 	if (token == Tkn_RCurlyBrackets) {
 		if(expect(Tkn_RCurlyBrackets, jps))
-			return NULL;
-		else
-			return jo;
+			return -1;
+		return 0;
 	}
 
 	/* Process object KV elements */
-	jo = json_kv_list(jo, jps);
-	if (!jo)
-		return NULL;
+	if (json_kv_list(jo, jps))
+		return -1;
 
 	if (expect(Tkn_RCurlyBrackets, jps))
-		return NULL;
-	return jo;
+		return -1;
+	return 0;
 }
 
-static void json_free_obj(JSON_OBJ *jo);
+void json_free_obj(JSON_OBJ *jo);
 static void json_free_array(JSON_ARRAY *ja)
 {
 	int i;
@@ -672,9 +665,12 @@ static void json_free_array(JSON_ARRAY *ja)
 	free(ja);
 }
 
-static void json_free_obj(JSON_OBJ *jo)
+void json_free_obj(JSON_OBJ *jo)
 {
 	int i;
+
+	if (!jo)
+		return;
 
 	for (i = 0; i < jo->kvnr; ++i) {
 		if (jo->kv[i].type == Val_String) {
@@ -690,30 +686,22 @@ static void json_free_obj(JSON_OBJ *jo)
 	free(jo);
 }
 
-JSON_OBJ *create_json_obj(const char *str)
+JSON_OBJ *json_create_obj(const char *str)
 {
 	JPS jps;
-	JSON_OBJ *jo, *root;
+	JSON_OBJ *root;
 
 	jps.buf = jps.left = str;
 	root = alloc_json_obj();
 	if (!root)
 		return NULL;
-	jo = json_obj(root, &jps);
-	if (!jo) {
+	if(json_obj(root, &jps)) {
 		fprintf(stderr, "Parse error near: \"%20.20s\"\n", jps.left);
 		json_free_obj(root);
 		return NULL;
 	}
 
 	return root;
-}
-
-void free_json_obj(JSON_OBJ *jo)
-{
-	if (!jo)
-		return;
-	json_free_obj(jo);
 }
 
 static void iprintf(int indent, const char *fmt, ...)
@@ -728,7 +716,7 @@ static void iprintf(int indent, const char *fmt, ...)
 	va_end(ap);
 }
 
-void print_json_array(JSON_ARRAY *ja, int indent)
+void json_print_array(JSON_ARRAY *ja, int indent)
 {
 	int i;
 
@@ -755,17 +743,17 @@ void print_json_array(JSON_ARRAY *ja, int indent)
 				iprintf(indent, "False\n");
 			break;
 		case Val_Array:
-			print_json_array(ja->values[i].array, indent);
+			json_print_array(ja->values[i].array, indent);
 			break;
 		case Val_Object:
-			print_json_obj(ja->values[i].object, indent);
+			json_print_obj(ja->values[i].object, indent);
 			break;
 		}
 	}
 	indent -= 6;
 }
 
-void print_json_obj(JSON_OBJ *jo, int indent)
+void json_print_obj(JSON_OBJ *jo, int indent)
 {
 	int i;
 
@@ -795,13 +783,13 @@ void print_json_obj(JSON_OBJ *jo, int indent)
 		case Val_Array:
 			indent += strlen(jo->kv[i].key) + 4;
 			printf("\n");
-			print_json_array(jo->kv[i].value.array, indent);
+			json_print_array(jo->kv[i].value.array, indent);
 			indent -= strlen(jo->kv[i].key) + 4;
 			break;
 		case Val_Object:
 			indent += strlen(jo->kv[i].key) + 4;
 			printf("\n");
-			print_json_obj(jo->kv[i].value.object, indent);
+			json_print_obj(jo->kv[i].value.object, indent);
 			indent -= strlen(jo->kv[i].key) + 4;
 			break;
 		}
