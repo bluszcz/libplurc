@@ -25,6 +25,43 @@
 
 #include "json.h"
 
+typedef struct json_parse_state {
+	const char *buf, *left;
+	union {
+		double number;
+		char *string;
+	};
+} JPS;
+
+enum json_tokens {
+	Tkn_Error,
+	Tkn_LCurlyBrackets,
+	Tkn_RCurlyBrackets,
+	Tkn_Colon,
+	Tkn_Comma,
+	Tkn_LSquareBrackets,
+	Tkn_RSquareBrackets,
+	Tkn_String,
+	Tkn_True,
+	Tkn_False,
+	Tkn_Null,
+	Tkn_Integer,
+	Tkn_Floating,
+};
+
+enum json_value_type {
+	Val_Null,
+	Val_Integer,
+	Val_Floating,
+	Val_String,
+	Val_Boolean,
+	Val_Array,
+	Val_Object,
+};
+
+#define DEFAULT_ARNR 20
+#define DEFAULT_KVNR 20
+
 static unsigned int hexvaltbl[] = {
 	 0,  0,  0,  0,  0,  0,  0,  0,  0,  0, /*   0 to   9 */
 	 0,  0,  0,  0,  0,  0,  0,  0,  0,  0, /*  10 to  19 */
