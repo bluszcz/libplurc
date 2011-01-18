@@ -426,29 +426,76 @@ static JSON_OBJ *alloc_json_obj(void)
 {
 	JSON_OBJ *jo;
 
-	jo = malloc(sizeof(JSON_OBJ));
+	jo = calloc(1, sizeof(JSON_OBJ));
 	if (!jo)
 		return NULL;
-	memset(jo, 0, sizeof(JSON_OBJ));
-	jo->kv = malloc(DEFAULT_KVNR * sizeof(JSON_KV));
+	jo->kv = calloc(1, DEFAULT_KVNR * sizeof(JSON_KV));
 	if (!jo->kv) {
 		free(jo);
 		return NULL;
 	}
-	memset(jo->kv, 0, DEFAULT_KVNR * sizeof(JSON_KV));
 	jo->akvnr = DEFAULT_KVNR;
 
 	return jo;
 }
 
+static void json_free_hash(JSON_HASH *hash)
+{
+	int i;
+	JSON_HASH *hp;
+
+	for (i = 0; i < KEY_HASH_SIZE; ++i) {
+		hp = hash[i].next;
+		while (hp) {
+			hash[i].next = hp->next;
+			free(hp);
+			hp = hash[i].next;
+		}
+	}
+	memset(hash, 0, KEY_HASH_SIZE * sizeof(JSON_HASH));
+}
+
+static unsigned int json_hashkey(const char *strkey)
+{
+	int klen = strlen(strkey), i;
+	unsigned int hashkey = 0xCDCDCDCD;
+
+	for (i = 0; i < klen; ++i) {
+		if (i & 1)
+			hashkey += strkey[i];
+		else
+			hashkey *= strkey[i];
+	}
+	hashkey %= KEY_HASH_SIZE;
+	return hashkey;
+}
+
+static void json_insert_hash(const JSON_KV *jkv, JSON_HASH *hash)
+{
+	JSON_HASH *hp;
+
+	hp = hash + json_hashkey(jkv->key);
+	while (hp->next)
+		hp = hp->next;
+	if (hp->kvptr) {
+		hp->next = calloc(1, sizeof(JSON_HASH));
+		hp = hp->next;
+	}
+	hp->kvptr = jkv;
+}
+
 static JSON_KV *json_obj_next_kv(JSON_OBJ *jo)
 {
+	int i;
 	if (jo->kvnr == jo->akvnr) {
 		jo->akvnr <<= 1;
+		json_free_hash(jo->keyhash);
 		jo->kv = realloc(jo->kv, jo->akvnr * sizeof(JSON_KV));
 		if (!jo->kv)
 			return NULL;
 	}
+	for (i = 0; i < jo->kvnr; ++i)
+		json_insert_hash(jo->kv + i, jo->keyhash);
 	++jo->kvnr;
 	return jo->kv + (jo->kvnr - 1);
 }
@@ -457,16 +504,14 @@ static JSON_ARRAY *alloc_json_array(void)
 {
 	JSON_ARRAY *ja;
 
-	ja = malloc(sizeof(JSON_ARRAY));
+	ja = calloc(1, sizeof(JSON_ARRAY));
 	if (!ja)
 		return NULL;
-	memset(ja, 0, sizeof(JSON_ARRAY));
-	ja->values = malloc(DEFAULT_ARNR * sizeof(JSON_VAL));
+	ja->values = calloc(1, DEFAULT_ARNR * sizeof(JSON_VAL));
 	if (!ja->values) {
 		free(ja);
 		return NULL;
 	}
-	memset(ja->values, 0, DEFAULT_ARNR * sizeof(JSON_VAL));
 	ja->asize = DEFAULT_ARNR;
 
 	return ja;
@@ -588,7 +633,7 @@ static int json_kv(JSON_OBJ *jo, JPS *jps)
 		return -1;
 	jkv->key = jps->string;
 	jps->string = NULL;
-
+	json_insert_hash(jkv, jo->keyhash);
 
 	/* Get Separator */
 	if (expect(Tkn_Colon, jps))
@@ -682,6 +727,7 @@ void json_free_obj(JSON_OBJ *jo)
 		}
 		free(jo->kv[i].key);
 	}
+	json_free_hash(jo->keyhash);
 	free(jo->kv);
 	free(jo);
 }
@@ -795,5 +841,161 @@ void json_print_obj(JSON_OBJ *jo, int indent)
 		}
 	}
 	indent -= 7;
+}
+
+static const JSON_KV *json_get_kv(const JSON_OBJ *jo, const char *key)
+{
+	const JSON_HASH *hp;
+
+	hp = jo->keyhash + json_hashkey(key);
+	do {
+		if (hp->kvptr && !strcmp(hp->kvptr->key, key))
+			return hp->kvptr;
+		hp = hp->next;
+	} while (hp);
+
+	return NULL;
+}
+
+int json_get_integer(const JSON_OBJ *jo, long long int *val, const char *key)
+{
+	const JSON_KV *jkvp = json_get_kv(jo, key);
+	if (!jkvp)
+		return -1;
+
+	if (jkvp->type != Val_Integer)
+		return -1;
+
+	*val = jkvp->value.integer;
+	return 0;
+}
+
+int json_get_floating(const JSON_OBJ *jo, double *val, const char *key)
+{
+	const JSON_KV *jkvp = json_get_kv(jo, key);
+	if (!jkvp)
+		return -1;
+
+	if (jkvp->type != Val_Floating)
+		return -1;
+
+	*val = jkvp->value.floating;
+	return 0;
+}
+
+int json_get_string(const JSON_OBJ *jo, const char **val, const char *key)
+{
+	const JSON_KV *jkvp = json_get_kv(jo, key);
+	if (!jkvp)
+		return -1;
+
+	if (jkvp->type != Val_String)
+		return -1;
+
+	*val = jkvp->value.string;
+	return 0;
+}
+
+int json_get_boolean(const JSON_OBJ *jo, int *val, const char *key)
+{
+	const JSON_KV *jkvp = json_get_kv(jo, key);
+	if (!jkvp)
+		return -1;
+
+	if (jkvp->type != Val_Boolean)
+		return -1;
+
+	*val = jkvp->value.boolean;
+	return 0;
+}
+
+int json_get_array(const JSON_OBJ *jo, const JSON_ARRAY **val, const char *key)
+{
+	const JSON_KV *jkvp = json_get_kv(jo, key);
+	if (!jkvp)
+		return -1;
+
+	if (jkvp->type != Val_Array)
+		return -1;
+
+	*val = jkvp->value.array;
+	return 0;
+}
+
+int json_get_object(const JSON_OBJ *jo, const JSON_OBJ **val, const char *key)
+{
+	const JSON_KV *jkvp = json_get_kv(jo, key);
+	if (!jkvp)
+		return -1;
+
+	if (jkvp->type != Val_Object)
+		return -1;
+
+	*val = jkvp->value.object;
+	return 0;
+}
+
+int json_array_checktype(const JSON_ARRAY *ja, const char *typestr)
+{
+	if (!strcmp(typestr, "long long int") && ja->type == Val_Integer)
+		return 1;
+	if (!strcmp(typestr, "double") && ja->type == Val_Floating)
+		return 1;
+	if (!strcmp(typestr, "const char *") && ja->type == Val_String)
+		return 1;
+	if (!strcmp(typestr, "int") && ja->type == Val_Boolean)
+		return 1;
+	if (!strcmp(typestr, "const JSON_ARRAY *") && ja->type == Val_Array)
+		return 1;
+	if (!strcmp(typestr, "const JSON_OBJ *") && ja->type == Val_Object)
+		return 1;
+	return 0;
+}
+
+int json_array_get_val(const JSON_ARRAY *ja, void *val, int aidx)
+{
+	if (aidx >= ja->size)
+		return 0;
+
+	switch (ja->type) {
+	case Val_Integer:
+		{
+		long long int *ival = (long long int *)val;
+		*ival = ja->values[aidx].integer;
+		}
+		break;
+	case Val_Floating:
+		{
+		double *fval = (double *)val;
+		*fval = ja->values[aidx].floating;
+		}
+		break;
+	case Val_String:
+		{
+		const char **sval = (const char **)val;
+		*sval = ja->values[aidx].string;
+		}
+		break;
+	case Val_Boolean:
+		{
+		int *bval = (int *)val;
+		*bval = ja->values[aidx].boolean;
+		}
+		break;
+	case Val_Array:
+		{
+		const JSON_ARRAY **aval = (const JSON_ARRAY **)val;
+		*aval = ja->values[aidx].array;
+		}
+		break;
+	case Val_Object:
+		{
+		const JSON_OBJ **oval = (const JSON_OBJ **)val;
+		*oval = ja->values[aidx].object;
+		}
+		break;
+	}
+
+	return 1;
 }
 

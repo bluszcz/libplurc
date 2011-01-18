@@ -308,6 +308,18 @@ int plurk_pprofile_get(PLURK *ph, const char *user_id)
 	return rc;
 }
 
+int plurk_pprofile_get_byint(PLURK *ph, long long int user_id)
+{
+	int rc;
+	char buf[20];
+
+	sprintf(buf, "%lld", user_id);
+	rc = plurk_request(ph, "/API/Profile/getPublicProfile", NOT_SSL, 2,
+			"api_key", ph->apikey,
+			"user_id", buf);
+	return rc;
+}
+
 int plurk_resps_get(PLURK *ph, const char *plurk_id, const char *from_response)
 {
 	int rc;

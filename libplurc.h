@@ -36,5 +36,6 @@ int plurk_add(PLURK *ph, const char *content, const char *qualifier);
 int plurk_resps_get(PLURK *ph, const char *plurk_id, const char *from_responses);
 int plurk_oprofile_get(PLURK *ph);
 int plurk_pprofile_get(PLURK *ph, const char *user_id);
+int plurk_pprofile_get_byint(PLURK *ph, long long int user_id);
 int plurk_resps_radd(PLURK *ph, const char *plurk_id, const char *content, const char *qualifier);
 

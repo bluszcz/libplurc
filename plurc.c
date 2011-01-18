@@ -17,7 +17,13 @@ int main(int argc, char **argv)
 	int rc = 0;
 	PLURK *ph;
 	ph = plurk_open(PLURK_KEY);
-	JSON_OBJ *jo;
+	JSON_OBJ *jo, *jo2;
+	long long int friends, favorer;
+	const char *privacy;
+	double karma;
+	const JSON_OBJ *user_info, *plurk;
+	const JSON_ARRAY *plurk_array, *favorers;
+	const char *plurk_msg, *nickname;
 
 	if (argc==3) {
 		if (!strcmp(argv[1], "add")) {
@@ -75,10 +81,48 @@ int main(int argc, char **argv)
 			printf("You wanna public profile get for %s\n", argv[2]);
 			if (!plurk_pprofile_get(ph, argv[2])) {
 				jo = json_create_obj(ph->body);
-				if (jo) {
-					json_print_obj(jo, 0);
-					json_free_obj(jo);
+				if (!jo)
+					goto out;
+				json_print_obj(jo, 0);
+				if (!json_get_integer(jo, &friends, "friends_count"))
+					printf("Have %lld friends\n", friends);
+				if (!json_get_string(jo, &privacy, "privacy"))
+					printf("Plurk privacy setting is: \"%s\"\n", privacy);
+				if (!json_get_object(jo, &user_info, "user_info") &&
+				    !json_get_floating(user_info, &karma, "karma")) {
+					printf("Karma is: %lf\n", karma);
 				}
+				if (json_get_array(jo, &plurk_array, "plurks")) {
+					json_free_obj(jo);
+					goto out;
+				}
+				printf("Recent plurks:\n");
+				int i;
+				json_array_foreach_object(plurk_array, &plurk, i) {
+					if (!json_get_string(plurk, &plurk_msg, "content_raw"))
+						printf("\t%s\n", plurk_msg);
+					if (json_get_array(plurk, &favorers, "favorers")) {
+						printf("\n");
+						continue;
+					}
+					int j;
+					printf("\tFavorers:");
+					json_array_foreach_integer(favorers, &favorer, j) {
+						printf(" %lld", favorer);
+						if (plurk_pprofile_get_byint(ph, favorer))
+							continue;
+						jo2 = json_create_obj(ph->body);
+						if (!jo2)
+							continue;
+						if (json_get_object(jo2, &user_info, "user_info"))
+							continue;
+						if (json_get_string(user_info, &nickname, "nick_name"))
+							continue;
+						printf("(%s)", nickname);
+					}
+					printf("\n\n");
+				}
+				json_free_obj(jo);
 			} else {
 				fprintf(stderr, "Plurk get response error\n");
 				rc = -1;
@@ -138,6 +182,10 @@ int main(int argc, char **argv)
 				jo = json_create_obj(ph->body);
 				if (jo) {
 					json_print_obj(jo, 0);
+					if (!json_get_integer(jo, &friends, "friends_count"))
+						printf("Have %lld friends\n", friends);
+					if (!json_get_string(jo, &privacy, "privacy"))
+						printf("Plurk privacy setting is: \"%s\"\n", privacy);
 					json_free_obj(jo);
 				}
 			} else {
