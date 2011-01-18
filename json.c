@@ -25,11 +25,7 @@
 
 #include "json.h"
 
-#ifdef CONVERT_TO_UTF8
-#include <iconv.h>
-#endif
-
-static char hexvaltbl[] = {
+static unsigned int hexvaltbl[] = {
 	 0,  0,  0,  0,  0,  0,  0,  0,  0,  0, /*   0 to   9 */
 	 0,  0,  0,  0,  0,  0,  0,  0,  0,  0, /*  10 to  19 */
 	 0,  0,  0,  0,  0,  0,  0,  0,  0,  0, /*  20 to  29 */
@@ -50,16 +46,88 @@ static int ishexdigit(char ch)
 		(ch >= 'A' && ch <= 'Z');
 }
 
+static int encode_utf8(char *dest, unsigned int ucval)
+{
+	int dlen;
+	unsigned int exbytenr;
+	unsigned char *dp = (unsigned char *)dest;
+
+	if(ucval < 0x80u) {
+		if (dest)
+			*dest = (char)ucval;
+		return 1;
+	}
+
+	/* Calculate the number of extra byte(s) */
+	for(exbytenr = 1; exbytenr < 5; ++exbytenr)
+		if(ucval < (1u << (exbytenr * 5 + 6)))
+			break;
+	dlen = 1 + exbytenr;
+
+	if (!dest)
+		return dlen;
+
+	/* Write first byte value */
+	*dp = (((1u << (exbytenr + 2)) - 2) << (6 - exbytenr)) |
+		((ucval >> (6 * exbytenr)) & ((1u << (6 - exbytenr)) - 1));
+
+	/* Write extra bytes */
+	++dp;
+	while (exbytenr--) {
+		*dp = 0x80u | ((ucval >> (6 * exbytenr)) & 0x3Fu);
+		++dp;
+	}
+
+	return dlen;
+}
+
+static inline unsigned int hexstrtoval(const char *hexstr)
+{
+	const unsigned char *hs = (const unsigned char *)hexstr;
+
+	return  ((hexvaltbl[hs[0]] << 12) & 0xF000u) |
+		((hexvaltbl[hs[1]] <<  8) & 0x0F00u) |
+		((hexvaltbl[hs[2]] <<  4) & 0x00F0u) |
+		((hexvaltbl[hs[3]]      ) & 0x000Fu);
+}
+
+static const char *decode_excape_uvalue(unsigned int *ucvalp, const char *src)
+{
+	unsigned int ucval, ucval2;
+	char errorch = ' ';
+
+	ucval = hexstrtoval(src);
+	src += 4;
+
+	/* Get unicode rang U+10000 ... U+10FFFF */
+	if(ucval >= 0xD800u && ucval <= 0xDFFFu) {
+		/* Expect high 10 bits encode and low 10 bits input */
+		if(ucval >= 0xDC00u || src[0] != '\\' || src[1] != 'u' ||
+		   !ishexdigit(src[2]) || !ishexdigit(src[3]) ||
+		   !ishexdigit(src[4]) || !ishexdigit(src[5])) {
+			*ucvalp = errorch;
+			return src;
+		}
+		ucval2 = hexstrtoval(src + 2);
+		/* Expect low 10 bits encode */
+		if(ucval2 < 0xDC00u || ucval2 >= 0xE000u) {
+			*ucvalp = errorch;
+			return src;
+		}
+		*ucvalp = ((ucval - 0xD800u) << 10) | (ucval2 - 0xDC00u);
+		return src + 6;
+	} else {
+		*ucvalp = ucval;
+		return src;
+	}
+}
+
 static int get_string(JPS *jps)
 {
 	int slen;
 	char *sp;
 	const char *p = jps->left;
-#ifdef CONVERT_TO_UTF8
-	char u16buf[2], *inbuf;;
-	iconv_t u16to8;
-	size_t inlen, outlen;
-#endif
+	unsigned int ucval;
 
 	if (*p != '\"')
 		return Tkn_Error;
@@ -88,12 +156,8 @@ static int get_string(JPS *jps)
 				++p;
 				if (ishexdigit(p[0]) && ishexdigit(p[1]) &&
 				    ishexdigit(p[2]) && ishexdigit(p[3])) {
-					p += 4;
-#ifdef CONVERT_TO_UTF8
-					slen += 3;
-#else
-					slen += 2;
-#endif
+					p = decode_excape_uvalue(&ucval, p);
+					slen += encode_utf8(NULL, ucval);
 				} else {
 					return Tkn_Error;
 				}
@@ -150,27 +214,8 @@ static int get_string(JPS *jps)
 				++sp; ++p;
 				break;
 			case 'u':
-				++p;
-				if (ishexdigit(p[0]) && ishexdigit(p[1]) &&
-				    ishexdigit(p[2]) && ishexdigit(p[3])) {
-#ifdef CONVERT_TO_UTF8
-					u16buf[0] = (hexvaltbl[(int)p[2]] << 4) | hexvaltbl[(int)p[3]];
-					u16buf[1] = (hexvaltbl[(int)p[0]] << 4) | hexvaltbl[(int)p[1]];
-					inbuf = u16buf;
-					inlen = 2;
-					outlen = 3;
-					u16to8 = iconv_open("UTF-8", "UTF-16");
-					iconv(u16to8, &inbuf, &inlen, &sp, &outlen);
-					iconv_close(u16to8);
-#else
-					sp[0] = (hexvaltbl[(int)p[2]] << 4) | hexvaltbl[(int)p[3]];
-					sp[1] = (hexvaltbl[(int)p[0]] << 4) | hexvaltbl[(int)p[1]];
-					sp += 2;
-#endif
-					p += 4;
-				} else {
-					return Tkn_Error;
-				}
+				p = decode_excape_uvalue(&ucval, p + 1);
+				sp += encode_utf8(sp, ucval);
 				break;
 			default:
 				return Tkn_Error;

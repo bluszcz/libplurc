@@ -15,7 +15,6 @@
  * GNU General Public License for more details.
  *
  */
-#undef CONVERT_TO_UTF8
 typedef struct json_parse_state {
 	const char *buf, *left;
 	union {
