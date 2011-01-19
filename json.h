@@ -68,23 +68,34 @@ int json_get_object(const JSON_OBJ *jo, const JSON_OBJ **val, const char *key);
 int json_array_checktype(const JSON_ARRAY *ja, const char *typestr);
 int json_array_get_val(const JSON_ARRAY *ja, void *val, int aidx);
 #define quote(v) #v
-#define json_array_foreach(const_array_ptr, value_ptr, type, aidx) \
-	{ type *dummy __attribute__((unused)) = value_ptr; } \
+#define dummy_assign(type, value_ptr) \
+	{ type dummy __attribute__((unused)) = value_ptr; }
+#define _json_array_foreach(const_array_ptr, value_ptr, type, aidx) \
 	for (aidx = 0; \
 	     json_array_checktype(const_array_ptr, quote(type)) && \
 	     json_array_get_val(const_array_ptr, (void *)value_ptr, aidx); \
 	     ++aidx)
+#define _json_array_foreach_typecheck(const_array_ptr, value_ptr, type, aidx) \
+	dummy_assign(json_##type##_type, value_ptr) \
+	_json_array_foreach(const_array_ptr, value_ptr, json_##type##_type, aidx)
+
+#define json_integer_type	long long int *
+#define json_floating_type	double *
+#define json_string_type	const char **
+#define json_boolean_type	int *
+#define json_array_type		const JSON_ARRAY **
+#define json_object_type	const JSON_OBJ **
 
 #define json_array_foreach_integer(const_array_ptr, value_ptr, aidx) \
-	json_array_foreach(const_array_ptr, value_ptr, long long int, aidx)
+	_json_array_foreach_typecheck(const_array_ptr, value_ptr, integer, aidx)
 #define json_array_foreach_floating(const_array_ptr, value_ptr, aidx) \
-	json_array_foreach(const_array_ptr, value_ptr, double, aidx)
+	_json_array_foreach_typecheck(const_array_ptr, value_ptr, floating, aidx)
 #define json_array_foreach_string(const_array_ptr, value_ptr, aidx) \
-	json_array_foreach(const_array_ptr, value_ptr, const char *, aidx)
+	_json_array_foreach_typecheck(const_array_ptr, value_ptr, string, aidx)
 #define json_array_foreach_boolean(const_array_ptr, value_ptr, aidx) \
-	json_array_foreach(const_array_ptr, value_ptr, int, aidx)
+	_json_array_foreach_typecheck(const_array_ptr, value_ptr, boolean, aidx)
 #define json_array_foreach_array(const_array_ptr, value_ptr, aidx) \
-	json_array_foreach(const_array_ptr, value_ptr, const JSON_ARRAY *, aidx)
+	_json_array_foreach_typecheck(const_array_ptr, value_ptr, array, aidx)
 #define json_array_foreach_object(const_array_ptr, value_ptr, aidx) \
-	json_array_foreach(const_array_ptr, value_ptr, const JSON_OBJ *, aidx)
+	_json_array_foreach_typecheck(const_array_ptr, value_ptr, object, aidx)
 

@@ -937,17 +937,19 @@ int json_get_object(const JSON_OBJ *jo, const JSON_OBJ **val, const char *key)
 
 int json_array_checktype(const JSON_ARRAY *ja, const char *typestr)
 {
-	if (!strcmp(typestr, "long long int") && ja->type == Val_Integer)
+	if (!ja->size)
+		return 0;
+	if (!strcmp(typestr, "long long int *") && ja->type == Val_Integer)
 		return 1;
-	if (!strcmp(typestr, "double") && ja->type == Val_Floating)
+	if (!strcmp(typestr, "double *") && ja->type == Val_Floating)
 		return 1;
-	if (!strcmp(typestr, "const char *") && ja->type == Val_String)
+	if (!strcmp(typestr, "const char **") && ja->type == Val_String)
 		return 1;
-	if (!strcmp(typestr, "int") && ja->type == Val_Boolean)
+	if (!strcmp(typestr, "int *") && ja->type == Val_Boolean)
 		return 1;
-	if (!strcmp(typestr, "const JSON_ARRAY *") && ja->type == Val_Array)
+	if (!strcmp(typestr, "const JSON_ARRAY **") && ja->type == Val_Array)
 		return 1;
-	if (!strcmp(typestr, "const JSON_OBJ *") && ja->type == Val_Object)
+	if (!strcmp(typestr, "const JSON_OBJ **") && ja->type == Val_Object)
 		return 1;
 	return 0;
 }
