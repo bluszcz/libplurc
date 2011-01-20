@@ -347,3 +347,35 @@ int plurk_resps_radd(PLURK *ph, const char *plurk_id,
 	return rc;
 }
 
+int plurk_polling_getplurks(PLURK *ph, const char *offset, int limit)
+{
+	int rc;
+	char numstr[20];
+
+	if (!ph->sestate)
+		return -1;
+
+	sprintf(numstr, "%d", limit);
+	rc = plurk_request(ph, "/API/Polling/getPlurks", NOT_SSL, 3,
+			"api_key", ph->apikey,
+			"offset", offset,
+			"limit", numstr);
+	return rc;
+}
+
+int plurk_timeline_getplurks(PLURK *ph, const char *offset, int limit)
+{
+	int rc;
+	char numstr[20];
+
+	if (!ph->sestate)
+		return -1;
+
+	sprintf(numstr, "%d", limit);
+	rc = plurk_request(ph, "/API/Timeline/getPlurks", NOT_SSL, 3,
+			"api_key", ph->apikey,
+			"offset", offset,
+			"limit", numstr);
+	return rc;
+}
+

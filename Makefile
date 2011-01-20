@@ -36,6 +36,9 @@ install: library
 plurc: install plurc.o config.h
 	$(CC) $(LDFLAGS) -lplurc -o plurc plurc.o
 
+dumplurk: install dumplurk.o config.h
+	$(CC) $(LDFLAGS) -lplurc -o dumplurk dumplurk.o
+
 clean:
 	rm -f libplurc.dylib libplurc.so plurc *.o
 

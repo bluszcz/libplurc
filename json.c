@@ -766,7 +766,7 @@ void json_print_array(JSON_ARRAY *ja, int indent)
 {
 	int i;
 
-	iprintf(indent, "Array:\n");
+	iprintf(indent, "Array: %d elements\n", ja->size);
 	indent += 6;
 	for (i = 0; i < ja->size; ++i) {
 		switch (ja->type) {
@@ -803,7 +803,7 @@ void json_print_obj(JSON_OBJ *jo, int indent)
 {
 	int i;
 
-	iprintf(indent, "Object:\n");
+	iprintf(indent, "Object: %d elements\n", jo->kvnr);
 	indent += 7;
 	for (i = 0; i < jo->kvnr; ++i) {
 		iprintf(indent, "%s -> ", jo->kv[i].key);
