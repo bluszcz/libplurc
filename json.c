@@ -885,15 +885,20 @@ int json_get_floating(const JSON_OBJ *jo, double *val, const char *key)
 
 int json_get_string(const JSON_OBJ *jo, const char **val, const char *key)
 {
+	static char nullch = '\0';
 	const JSON_KV *jkvp = json_get_kv(jo, key);
 	if (!jkvp)
 		return -1;
 
-	if (jkvp->type != Val_String)
-		return -1;
+	if (jkvp->type == Val_String) {
+		*val = jkvp->value.string;
+		return 0;
+	} else if (jkvp->type == Val_Null) {
+		*val = &nullch;
+		return 0;
+	}
 
-	*val = jkvp->value.string;
-	return 0;
+	return -1;
 }
 
 int json_get_boolean(const JSON_OBJ *jo, int *val, const char *key)
